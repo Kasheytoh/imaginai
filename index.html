@@ -479,7 +479,7 @@
     <div class="notification" id="notification">
         Image generated successfully!
     </div>
-    
+
 <script>
     // DOM Elements
     const generateBtn = document.getElementById('generate-btn');
@@ -494,27 +494,19 @@
     const historyGrid = document.getElementById('history-grid');
     const notification = document.getElementById('notification');
     const promptTags = document.querySelectorAll('.prompt-tag');
-    const clearHistoryBtn = document.getElementById('clear-history-btn');
-    const downloadBtn = document.getElementById('download-btn');
     
     // Together AI API configuration
     const TOGETHER_API_KEY = 'tgp_v1_AzgKHSbFIyq98yBIhyZJhlRZYtyQQb132lrLT15pcR4';
     const MODEL_NAME = 'black-forest-labs/FLUX.1-schnell-Free';
     const API_URL = 'https://api.together.xyz/v1/images/generations';
     
-    // Track current image to prevent duplicates
-    let currentImageUrl = null;
-    
     // Initialize with empty history
     function initHistory() {
         historyGrid.innerHTML = '';
         const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
         savedHistory.forEach(item => {
-            addToHistory(item.imageUrl, item.prompt, item.style, item.resolution, item.timestamp, false);
+            addToHistory(item.imageUrl, item.prompt);
         });
-        
-        // Show/hide clear button based on history
-        clearHistoryBtn.style.display = savedHistory.length > 0 ? 'block' : 'none';
     }
     
     // Show notification
@@ -527,119 +519,19 @@
     }
     
     // Add image to history
-    function addToHistory(imageUrl, prompt, style, resolution, timestamp = Date.now(), saveToStorage = true) {
-        // Check if this image is already in history
-        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
-        const isDuplicate = savedHistory.some(item => item.imageUrl === imageUrl);
-        
-        if (isDuplicate) {
-            return;
-        }
-        
+    function addToHistory(imageUrl, prompt) {
         const historyItem = document.createElement('div');
         historyItem.className = 'history-item';
         historyItem.innerHTML = `
             <img src="${imageUrl}" alt="Generated image">
-            <div class="history-details">
-                <div class="history-prompt">${prompt}</div>
-                <div class="history-meta">
-                    <span>${style || 'Default'}</span>
-                    <span>${resolution}</span>
-                    <span>${new Date(timestamp).toLocaleString()}</span>
-                </div>
-            </div>
+            <div class="history-prompt">${prompt}</div>
         `;
-        
-        // Add click handler to load image from history
-        historyItem.addEventListener('click', () => {
-            loadImageFromHistory(imageUrl, prompt, style, resolution);
-        });
-        
         historyGrid.insertBefore(historyItem, historyGrid.firstChild);
         
-        if (saveToStorage) {
-            // Save to localStorage with metadata
-            savedHistory.unshift({ 
-                imageUrl, 
-                prompt, 
-                style, 
-                resolution,
-                timestamp 
-            });
-            
-            // Limit history to 20 items and save
-            localStorage.setItem('imageHistory', JSON.stringify(savedHistory.slice(0, 20)));
-            
-            // Show clear button if history exists
-            clearHistoryBtn.style.display = 'block';
-        }
-    }
-    
-    // Load image from history
-    function loadImageFromHistory(imageUrl, prompt, style, resolution) {
-        generatedImage.src = imageUrl;
-        generatedImage.style.display = 'block';
-        placeholder.style.display = 'none';
-        loading.style.display = 'none';
-        
-        // Update current image
-        currentImageUrl = imageUrl;
-        
-        // Enable download button
-        downloadBtn.disabled = false;
-        
-        // Update prompt input
-        promptInput.value = prompt;
-        
-        // Update style and resolution selects if they match
-        if (style) {
-            styleSelect.value = style;
-        }
-        if (resolution) {
-            resolutionSelect.value = resolution;
-        }
-    }
-    
-    // Clear all history
-    function clearHistory() {
-        if (confirm('Are you sure you want to clear all generated images history?')) {
-            localStorage.removeItem('imageHistory');
-            historyGrid.innerHTML = '';
-            clearHistoryBtn.style.display = 'none';
-            showNotification('History cleared successfully');
-        }
-    }
-    
-    // Download current image
-    function downloadImage() {
-        if (!currentImageUrl) {
-            showNotification('No image to download');
-            return;
-        }
-        
-        try {
-            // Create a temporary anchor element
-            const link = document.createElement('a');
-            link.href = currentImageUrl;
-            
-            // Extract a filename from the prompt (first 3 words)
-            const promptWords = promptInput.value.trim().split(/\s+/);
-            const fileName = promptWords.slice(0, 3).join('-').toLowerCase() || 'generated-image';
-            
-            // Set download attributes
-            link.download = `${fileName}-${Date.now()}.png`;
-            link.target = '_blank';
-            
-            // Trigger download
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            showNotification('Image download started');
-        } catch (error) {
-            console.error('Error downloading image:', error);
-            showNotification('Failed to download image');
-        }
+        // Save to localStorage
+        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+        savedHistory.unshift({ imageUrl, prompt });
+        localStorage.setItem('imageHistory', JSON.stringify(savedHistory.slice(0, 20)));
     }
     
     // Generate image using Together AI API
@@ -654,7 +546,6 @@
         placeholder.style.display = 'none';
         loading.style.display = 'flex';
         generatedImage.style.display = 'none';
-        downloadBtn.disabled = true;
         
         try {
             // Get selected options
@@ -692,16 +583,14 @@
             
             // Get the temporary image URL
             const tempImageUrl = data.data[0].url;
-            currentImageUrl = tempImageUrl;
             
             // Display generated image directly from the URL
             generatedImage.src = tempImageUrl;
             generatedImage.style.display = 'block';
             loading.style.display = 'none';
-            downloadBtn.disabled = false;
             
-            // Add to history with metadata
-            addToHistory(tempImageUrl, prompt, style, resolution);
+            // Add to history
+            addToHistory(tempImageUrl, prompt);
             
             showNotification('Image generated successfully!');
         } catch (error) {
@@ -730,8 +619,6 @@
     // Event Listeners
     generateBtn.addEventListener('click', generateImage);
     randomBtn.addEventListener('click', setRandomPrompt);
-    clearHistoryBtn.addEventListener('click', clearHistory);
-    downloadBtn.addEventListener('click', downloadImage);
     
     // Prompt tag click handlers
     promptTags.forEach(tag => {
