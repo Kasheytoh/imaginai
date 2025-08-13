@@ -480,6 +480,7 @@
         Image generated successfully!
     </div>
     
+        
 <script>
     // DOM Elements
     const generateBtn = document.getElementById('generate-btn');
@@ -496,31 +497,33 @@
     const promptTags = document.querySelectorAll('.prompt-tag');
     
     // Together AI API configuration
-    const TOGETHER_API_KEY = 'tgp_v1_AzgKHSbFIyq98yBIhyZJhlRZYtyQQb132lrLT15pcR4'; // Replace with your actual key
+    const TOGETHER_API_KEY = 'tgp_v1_AzgKHSbFIyq98yBIhyZJhlRZYtyQQb132lrLT15pcR4';
     const MODEL_NAME = 'black-forest-labs/FLUX.1-schnell-Free';
-    const API_URL = 'https://api.together.xyz/v1/images/generations';
+    const API_URL = 'https://api.together.xyz/images/generations';
+    const MAX_HISTORY_ITEMS = 20;
     
-    // Initialize with empty history
+    // Initialize with saved history
     function initHistory() {
         historyGrid.innerHTML = '';
-        // Load any saved history from localStorage
         const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
         savedHistory.forEach(item => {
-            addToHistory(item.imageUrl, item.prompt);
+            // Create blob URL from base64 for saved images
+            const blobUrl = `data:image/png;base64,${item.imageData}`;
+            addToHistory(blobUrl, item.prompt, false); // false = don't save again
         });
     }
     
     // Show notification
-    function showNotification(message) {
+    function showNotification(message, isError = false) {
         notification.textContent = message;
-        notification.classList.add('show');
+        notification.className = isError ? 'notification error show' : 'notification success show';
         setTimeout(() => {
-            notification.classList.remove('show');
+            notification.className = 'notification';
         }, 3000);
     }
     
-    // Add image to history
-    function addToHistory(imageUrl, prompt) {
+    // Add image to history and optionally save to localStorage
+    function addToHistory(imageUrl, prompt, saveToStorage = true) {
         const historyItem = document.createElement('div');
         historyItem.className = 'history-item';
         historyItem.innerHTML = `
@@ -529,23 +532,38 @@
         `;
         historyGrid.insertBefore(historyItem, historyGrid.firstChild);
         
-        // Save to localStorage
-        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
-        savedHistory.unshift({ imageUrl, prompt });
-        localStorage.setItem('imageHistory', JSON.stringify(savedHistory.slice(0, 20))); // Keep last 20 items
+        if (saveToStorage) {
+            // Convert blob URL to base64 for storage
+            fetch(imageUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const base64data = reader.result.split(',')[1];
+                        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+                        savedHistory.unshift({ 
+                            imageData: base64data, 
+                            prompt,
+                            timestamp: new Date().toISOString() 
+                        });
+                        localStorage.setItem('imageHistory', 
+                            JSON.stringify(savedHistory.slice(0, MAX_HISTORY_ITEMS)));
+                    };
+                    reader.readAsDataURL(blob);
+                })
+                .catch(error => {
+                    console.error('Error saving image to history:', error);
+                });
+        }
     }
     
     // Generate image using Together AI API
     async function generateImage() {
         const prompt = promptInput.value.trim();
         if (!prompt) {
-            showNotification('Please enter a description for your image');
+            showNotification('Please enter a description for your image', true);
             return;
         }
-        
-        // Get selected options
-        const style = styleSelect.value;
-        const resolution = resolutionSelect.value;
         
         // Show loading state
         placeholder.style.display = 'none';
@@ -553,19 +571,11 @@
         generatedImage.style.display = 'none';
         
         try {
-            // Prepare the request data
-            const fullPrompt = `${style ? `${style} style, ` : ''}${prompt}`;
+            // Get selected options
+            const style = styleSelect.value;
+            const resolution = resolutionSelect.value;
             const [width, height] = resolution.split('x').map(Number);
-            
-            const requestData = {
-                model: MODEL_NAME,
-                prompt: fullPrompt,
-                width,
-                height,
-                steps: 4, // Adjust as needed
-                seed: Math.floor(Math.random() * 1000000),
-                n: 1 // Number of images to generate
-            };
+            const fullPrompt = `${style ? `${style} style, ` : ''}${prompt}`;
             
             // Make the API request
             const response = await fetch(API_URL, {
@@ -574,38 +584,54 @@
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${TOGETHER_API_KEY}`
                 },
-                body: JSON.stringify(requestData)
+                body: JSON.stringify({
+                    model: MODEL_NAME,
+                    prompt: fullPrompt,
+                    width: width,
+                    height: height,
+                    steps: 4,
+                    n: 1,
+                    seed: Math.floor(Math.random() * 1000000)
+                })
             });
-            
+
             if (!response.ok) {
                 throw new Error(`API request failed with status ${response.status}`);
             }
-            
+
             const data = await response.json();
             
-            if (!data.output || !data.output.choices || !data.output.choices[0] || !data.output.choices[0].image_base64) {
+            if (!data.data || !data.data[0] || !data.data[0].url) {
                 throw new Error('Invalid response format from API');
             }
             
-            // Convert base64 image to URL
-            const base64Image = data.output.choices[0].image_base64;
-            const imageUrl = `data:image/png;base64,${base64Image}`;
+            // Get the temporary image URL
+            const tempImageUrl = data.data[0].url;
+            
+            // Fetch the actual image data
+            const imageResponse = await fetch(tempImageUrl);
+            if (!imageResponse.ok) {
+                throw new Error('Failed to fetch generated image');
+            }
+            
+            // Convert to blob URL
+            const blob = await imageResponse.blob();
+            const blobUrl = URL.createObjectURL(blob);
             
             // Display generated image
-            generatedImage.src = imageUrl;
+            generatedImage.src = blobUrl;
             generatedImage.style.display = 'block';
             loading.style.display = 'none';
             
-            // Add to history
-            addToHistory(imageUrl, prompt);
+            // Add to history (will automatically save to localStorage)
+            addToHistory(blobUrl, prompt);
             
-            // Show success notification
             showNotification('Image generated successfully!');
         } catch (error) {
             console.error('Error generating image:', error);
             loading.style.display = 'none';
             placeholder.style.display = 'flex';
-            showNotification('Failed to generate image. Please try again.');
+            showNotification('Failed to generate image. Please try again.', true);
         }
     }
     
@@ -624,6 +650,13 @@
         promptInput.value = randomPrompt;
     }
     
+    // Clear generation history
+    function clearHistory() {
+        localStorage.removeItem('imageHistory');
+        historyGrid.innerHTML = '';
+        showNotification('History cleared');
+    }
+    
     // Event Listeners
     generateBtn.addEventListener('click', generateImage);
     randomBtn.addEventListener('click', setRandomPrompt);
@@ -636,8 +669,17 @@
     });
     
     // Initialize
-    initHistory();
-    setRandomPrompt();
+    document.addEventListener('DOMContentLoaded', () => {
+        initHistory();
+        setRandomPrompt();
+        
+        // Add clear history button if needed
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Clear History';
+        clearBtn.className = 'clear-btn';
+        clearBtn.addEventListener('click', clearHistory);
+        document.querySelector('.history-container').appendChild(clearBtn);
+    });
   </script>
  </body>
 </html>
