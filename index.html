@@ -480,117 +480,164 @@
         Image generated successfully!
     </div>
     
-    <script>
-        // DOM Elements
-        const generateBtn = document.getElementById('generate-btn');
-        const randomBtn = document.getElementById('random-btn');
-        const promptInput = document.getElementById('prompt');
-        const styleSelect = document.getElementById('style');
-        const resolutionSelect = document.getElementById('resolution');
-        const generatedImage = document.getElementById('generated-image');
-        const imagePreview = document.querySelector('.image-preview');
-        const placeholder = document.querySelector('.placeholder');
-        const loading = document.getElementById('loading');
-        const historyGrid = document.getElementById('history-grid');
-        const notification = document.getElementById('notification');
-        const promptTags = document.querySelectorAll('.prompt-tag');
+<script>
+    // DOM Elements
+    const generateBtn = document.getElementById('generate-btn');
+    const randomBtn = document.getElementById('random-btn');
+    const promptInput = document.getElementById('prompt');
+    const styleSelect = document.getElementById('style');
+    const resolutionSelect = document.getElementById('resolution');
+    const generatedImage = document.getElementById('generated-image');
+    const imagePreview = document.querySelector('.image-preview');
+    const placeholder = document.querySelector('.placeholder');
+    const loading = document.getElementById('loading');
+    const historyGrid = document.getElementById('history-grid');
+    const notification = document.getElementById('notification');
+    const promptTags = document.querySelectorAll('.prompt-tag');
+    
+    // Together AI API configuration
+    const TOGETHER_API_KEY = 'tgp_v1_AzgKHSbFIyq98yBIhyZJhlRZYtyQQb132lrLT15pcR4'; // Replace with your actual key
+    const MODEL_NAME = 'black-forest-labs/FLUX.1-schnell-Free';
+    const API_URL = 'https://api.together.xyz/inference';
+    
+    // Initialize with empty history
+    function initHistory() {
+        historyGrid.innerHTML = '';
+        // Load any saved history from localStorage
+        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+        savedHistory.forEach(item => {
+            addToHistory(item.imageUrl, item.prompt);
+        });
+    }
+    
+    // Show notification
+    function showNotification(message) {
+        notification.textContent = message;
+        notification.classList.add('show');
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 3000);
+    }
+    
+    // Add image to history
+    function addToHistory(imageUrl, prompt) {
+        const historyItem = document.createElement('div');
+        historyItem.className = 'history-item';
+        historyItem.innerHTML = `
+            <img src="${imageUrl}" alt="Generated image">
+            <div class="history-prompt">${prompt}</div>
+        `;
+        historyGrid.insertBefore(historyItem, historyGrid.firstChild);
         
-        // Sample image URLs for demonstration
-        const sampleImages = [
-            'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
-            'https://images.unsplash.com/photo-1519681393784-d120267933ba',
-            'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05',
-            'https://images.unsplash.com/photo-1469474968028-56623f02e42e',
-            'https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5',
-            'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1'
+        // Save to localStorage
+        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+        savedHistory.unshift({ imageUrl, prompt });
+        localStorage.setItem('imageHistory', JSON.stringify(savedHistory.slice(0, 20))); // Keep last 20 items
+    }
+    
+    // Generate image using Together AI API
+    async function generateImage() {
+        const prompt = promptInput.value.trim();
+        if (!prompt) {
+            showNotification('Please enter a description for your image');
+            return;
+        }
+        
+        // Get selected options
+        const style = styleSelect.value;
+        const resolution = resolutionSelect.value;
+        
+        // Show loading state
+        placeholder.style.display = 'none';
+        loading.style.display = 'flex';
+        generatedImage.style.display = 'none';
+        
+        try {
+            // Prepare the request data
+            const fullPrompt = `${style ? `${style} style, ` : ''}${prompt}`;
+            const [width, height] = resolution.split('x').map(Number);
+            
+            const requestData = {
+                model: MODEL_NAME,
+                prompt: fullPrompt,
+                width,
+                height,
+                steps: 20, // Adjust as needed
+                seed: Math.floor(Math.random() * 1000000),
+                n: 1 // Number of images to generate
+            };
+            
+            // Make the API request
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${TOGETHER_API_KEY}`
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.output || !data.output.choices || !data.output.choices[0] || !data.output.choices[0].image_base64) {
+                throw new Error('Invalid response format from API');
+            }
+            
+            // Convert base64 image to URL
+            const base64Image = data.output.choices[0].image_base64;
+            const imageUrl = `data:image/png;base64,${base64Image}`;
+            
+            // Display generated image
+            generatedImage.src = imageUrl;
+            generatedImage.style.display = 'block';
+            loading.style.display = 'none';
+            
+            // Add to history
+            addToHistory(imageUrl, prompt);
+            
+            // Show success notification
+            showNotification('Image generated successfully!');
+        } catch (error) {
+            console.error('Error generating image:', error);
+            loading.style.display = 'none';
+            placeholder.style.display = 'flex';
+            showNotification('Failed to generate image. Please try again.');
+        }
+    }
+    
+    // Set random prompt
+    function setRandomPrompt() {
+        const prompts = [
+            "A futuristic city with flying cars and neon lights",
+            "A mystical forest with glowing mushrooms and fairies",
+            "An astronaut exploring a colorful alien planet",
+            "A cyberpunk samurai in a rainy Tokyo street",
+            "A steampunk airship flying over Victorian London",
+            "An underwater castle surrounded by sea creatures"
         ];
         
-        // Initialize with sample history
-        function initHistory() {
-            historyGrid.innerHTML = '';
-            for (let i = 0; i < 6; i++) {
-                const historyItem = document.createElement('div');
-                historyItem.className = 'history-item';
-                historyItem.innerHTML = `<img src="${sampleImages[i]}?auto=format&fit=crop&w=200&h=200&q=80" alt="History item">`;
-                historyGrid.appendChild(historyItem);
-            }
-        }
-        
-        // Show notification
-        function showNotification(message) {
-            notification.textContent = message;
-            notification.classList.add('show');
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-        
-        // Generate image function
-        function generateImage() {
-            const prompt = promptInput.value.trim();
-            if (!prompt) {
-                showNotification('Please enter a description for your image');
-                return;
-            }
-            
-            // Show loading state
-            placeholder.style.display = 'none';
-            loading.style.display = 'flex';
-            generatedImage.style.display = 'none';
-            
-            // Simulate API call delay
-            setTimeout(() => {
-                // Hide loading
-                loading.style.display = 'none';
-                
-                // Select a random sample image for demonstration
-                const randomIndex = Math.floor(Math.random() * sampleImages.length);
-                const imageUrl = `${sampleImages[randomIndex]}?auto=format&fit=crop&w=800&h=600&q=80`;
-                
-                // Display generated image
-                generatedImage.src = imageUrl;
-                generatedImage.style.display = 'block';
-                
-                // Add to history
-                const historyItem = document.createElement('div');
-                historyItem.className = 'history-item';
-                historyItem.innerHTML = `<img src="${imageUrl}" alt="Generated image">`;
-                historyGrid.insertBefore(historyItem, historyGrid.firstChild);
-                
-                // Show success notification
-                showNotification('Image generated successfully!');
-            }, 2000);
-        }
-        
-        // Set random prompt
-        function setRandomPrompt() {
-            const prompts = [
-                "A futuristic city with flying cars and neon lights",
-                "A mystical forest with glowing mushrooms and fairies",
-                "An astronaut exploring a colorful alien planet",
-                "A cyberpunk samurai in a rainy Tokyo street",
-                "A steampunk airship flying over Victorian London",
-                "An underwater castle surrounded by sea creatures"
-            ];
-            
-            const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-            promptInput.value = randomPrompt;
-        }
-        
-        // Event Listeners
-        generateBtn.addEventListener('click', generateImage);
-        randomBtn.addEventListener('click', setRandomPrompt);
-        
-        // Prompt tag click handlers
-        promptTags.forEach(tag => {
-            tag.addEventListener('click', () => {
-                promptInput.value = tag.textContent;
-            });
+        const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+        promptInput.value = randomPrompt;
+    }
+    
+    // Event Listeners
+    generateBtn.addEventListener('click', generateImage);
+    randomBtn.addEventListener('click', setRandomPrompt);
+    
+    // Prompt tag click handlers
+    promptTags.forEach(tag => {
+        tag.addEventListener('click', () => {
+            promptInput.value = tag.textContent;
         });
-        
-        // Initialize
-        initHistory();
-        setRandomPrompt();
-    </script>
-</body>
+    });
+    
+    // Initialize
+    initHistory();
+    setRandomPrompt();
+  </script>
+ </body>
 </html>
