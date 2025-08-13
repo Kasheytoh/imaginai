@@ -499,31 +499,28 @@
     // Together AI API configuration
     const TOGETHER_API_KEY = 'tgp_v1_AzgKHSbFIyq98yBIhyZJhlRZYtyQQb132lrLT15pcR4';
     const MODEL_NAME = 'black-forest-labs/FLUX.1-schnell-Free';
-    const API_URL = 'https://api.together.xyz/images/generations';
-    const MAX_HISTORY_ITEMS = 20;
+    const API_URL = 'https://api.together.xyz/v1/images/generations';
     
-    // Initialize with saved history
+    // Initialize with empty history
     function initHistory() {
         historyGrid.innerHTML = '';
         const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
         savedHistory.forEach(item => {
-            // Create blob URL from base64 for saved images
-            const blobUrl = `data:image/png;base64,${item.imageData}`;
-            addToHistory(blobUrl, item.prompt, false); // false = don't save again
+            addToHistory(item.imageUrl, item.prompt);
         });
     }
     
     // Show notification
-    function showNotification(message, isError = false) {
+    function showNotification(message) {
         notification.textContent = message;
-        notification.className = isError ? 'notification error show' : 'notification success show';
+        notification.classList.add('show');
         setTimeout(() => {
-            notification.className = 'notification';
+            notification.classList.remove('show');
         }, 3000);
     }
     
-    // Add image to history and optionally save to localStorage
-    function addToHistory(imageUrl, prompt, saveToStorage = true) {
+    // Add image to history
+    function addToHistory(imageUrl, prompt) {
         const historyItem = document.createElement('div');
         historyItem.className = 'history-item';
         historyItem.innerHTML = `
@@ -532,36 +529,17 @@
         `;
         historyGrid.insertBefore(historyItem, historyGrid.firstChild);
         
-        if (saveToStorage) {
-            // Convert blob URL to base64 for storage
-            fetch(imageUrl)
-                .then(res => res.blob())
-                .then(blob => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const base64data = reader.result.split(',')[1];
-                        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
-                        savedHistory.unshift({ 
-                            imageData: base64data, 
-                            prompt,
-                            timestamp: new Date().toISOString() 
-                        });
-                        localStorage.setItem('imageHistory', 
-                            JSON.stringify(savedHistory.slice(0, MAX_HISTORY_ITEMS)));
-                    };
-                    reader.readAsDataURL(blob);
-                })
-                .catch(error => {
-                    console.error('Error saving image to history:', error);
-                });
-        }
+        // Save to localStorage
+        const savedHistory = JSON.parse(localStorage.getItem('imageHistory') || '[]');
+        savedHistory.unshift({ imageUrl, prompt });
+        localStorage.setItem('imageHistory', JSON.stringify(savedHistory.slice(0, 20)));
     }
     
     // Generate image using Together AI API
     async function generateImage() {
         const prompt = promptInput.value.trim();
         if (!prompt) {
-            showNotification('Please enter a description for your image', true);
+            showNotification('Please enter a description for your image');
             return;
         }
         
@@ -589,9 +567,8 @@
                     prompt: fullPrompt,
                     width: width,
                     height: height,
-                    steps: 4,
-                    n: 1,
-                    seed: Math.floor(Math.random() * 1000000)
+                    steps: 3,
+                    n: 1
                 })
             });
 
@@ -608,30 +585,20 @@
             // Get the temporary image URL
             const tempImageUrl = data.data[0].url;
             
-            // Fetch the actual image data
-            const imageResponse = await fetch(tempImageUrl);
-            if (!imageResponse.ok) {
-                throw new Error('Failed to fetch generated image');
-            }
-            
-            // Convert to blob URL
-            const blob = await imageResponse.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            
-            // Display generated image
-            generatedImage.src = blobUrl;
+            // Display generated image directly from the URL
+            generatedImage.src = tempImageUrl;
             generatedImage.style.display = 'block';
             loading.style.display = 'none';
             
-            // Add to history (will automatically save to localStorage)
-            addToHistory(blobUrl, prompt);
+            // Add to history
+            addToHistory(tempImageUrl, prompt);
             
             showNotification('Image generated successfully!');
         } catch (error) {
             console.error('Error generating image:', error);
             loading.style.display = 'none';
             placeholder.style.display = 'flex';
-            showNotification('Failed to generate image. Please try again.', true);
+            showNotification('Failed to generate image. Please try again.');
         }
     }
     
@@ -650,13 +617,6 @@
         promptInput.value = randomPrompt;
     }
     
-    // Clear generation history
-    function clearHistory() {
-        localStorage.removeItem('imageHistory');
-        historyGrid.innerHTML = '';
-        showNotification('History cleared');
-    }
-    
     // Event Listeners
     generateBtn.addEventListener('click', generateImage);
     randomBtn.addEventListener('click', setRandomPrompt);
@@ -669,17 +629,8 @@
     });
     
     // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
-        initHistory();
-        setRandomPrompt();
-        
-        // Add clear history button if needed
-        const clearBtn = document.createElement('button');
-        clearBtn.textContent = 'Clear History';
-        clearBtn.className = 'clear-btn';
-        clearBtn.addEventListener('click', clearHistory);
-        document.querySelector('.history-container').appendChild(clearBtn);
-    });
-  </script>
+    initHistory();
+    setRandomPrompt();
+</script>
  </body>
 </html>
